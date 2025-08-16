@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraud Call Edge AI App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 1s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <div id="app-container" class="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full transition-all duration-500 ease-in-out transform scale-100">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">Fraud Call Edge AI</h1>
+        
+        <div id="status-display" class="text-center text-lg font-medium text-gray-600 mb-6 transition-colors duration-500">
+            สถานะ: ตัดการเชื่อมต่อแล้ว
+        </div>
+
+        <div id="data-card" class="bg-blue-100 rounded-2xl p-8 mb-6 text-center transition-colors duration-500 ease-in-out">
+            <p class="text-2xl text-blue-800 mb-2">สถานะความปลอดภัย</p>
+            <p id="safety-status" class="text-7xl font-bold text-blue-900 transition-colors duration-500">
+                ไม่พบเสียง
+            </p>
+        </div>
+        
+        <div id="history-card" class="bg-gray-200 rounded-2xl p-4 mb-6">
+            <h2 class="text-xl font-bold text-gray-700 text-center mb-2">สถิติการตรวจจับ</h2>
+            <div class="flex justify-around text-center">
+                <div>
+                    <p class="text-lg text-green-700">ปลอดภัย</p>
+                    <p id="history-safe" class="text-3xl font-bold text-green-800">0</p>
+                </div>
+                <div>
+                    <p class="text-lg text-red-700">ไม่ปลอดภัย</p>
+                    <p id="history-unsafe" class="text-3xl font-bold text-red-800">0</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-4">
+            <button id="connect-button" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-blue-700 transition-colors duration-300 transform hover:scale-105">
+                เชื่อมต่อ Bluetooth
+            </button>
+            <button id="disconnect-button" class="bg-red-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-red-600 transition-colors duration-300 transform hover:scale-105 hidden">
+                ตัดการเชื่อมต่อ
+            </button>
+            <div class="flex gap-4">
+                 <button id="clear-button" class="w-full bg-yellow-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-yellow-600 transition-colors duration-300 transform hover:scale-105">
+                    ล้างข้อมูล
+                </button>
+                <button id="save-button" class="w-full bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-indigo-600 transition-colors duration-300 transform hover:scale-105">
+                    บันทึกข้อมูล
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- UI elements ---
+        const statusDisplay = document.getElementById('status-display');
+        const safetyStatusDisplay = document.getElementById('safety-status');
+        const dataCard = document.getElementById('data-card');
+        const connectButton = document.getElementById('connect-button');
+        const disconnectButton = document.getElementById('disconnect-button');
+        const body = document.body;
+        // UI elements ที่เพิ่มเข้ามา
+        const historySafeDisplay = document.getElementById('history-safe');
+        const historyUnsafeDisplay = document.getElementById('history-unsafe');
+        const clearButton = document.getElementById('clear-button');
+        const saveButton = document.getElementById('save-button');
+
+
+        // --- Bluetooth variables ---
+        let bluetoothDevice = null;
+        let audioCharacteristic = null;
+        
+        // --- Bluetooth UUIDs ---
+        
+        const AUDIO_SERVICE_UUID = '19B10000-E8F2-537E-4F6C-D104768A1214';
+        const AUDIO_CHAR_UUID = '19B10001-E8F2-537E-4F6C-D104768A1214';
+
+        // --- ตัวแปรสำหรับจัดเก็บสถิติ ---
+        let safetyHistory = { safe: 0, unsafe: 0 };
+
+
+        // --- ฟังก์ชันสำหรับจัดการข้อมูลสถิติ ---
+
+        // โหลดข้อมูลจาก localStorage เมื่อเริ่มแอป
+        function loadHistory() {
+            const storedHistory = localStorage.getItem('safetyHistory');
+            if (storedHistory) {
+                safetyHistory = JSON.parse(storedHistory);
+            }
+            updateHistoryDisplay();
+        }
+
+        // อัปเดตการแสดงผลสถิติบนหน้าจอ
+        function updateHistoryDisplay() {
+            historySafeDisplay.textContent = safetyHistory.safe;
+            historyUnsafeDisplay.textContent = safetyHistory.unsafe;
+        }
+        
+        // บันทึกข้อมูลสถิติลง localStorage
+        function saveHistory() {
+            localStorage.setItem('safetyHistory', JSON.stringify(safetyHistory));
+        }
+
+        // เคลียร์ข้อมูลสถิติ
+        function clearHistory() {
+            if (confirm('คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลสถิติทั้งหมด?')) {
+                safetyHistory = { safe: 0, unsafe: 0 };
+                saveHistory();
+                updateHistoryDisplay();
+                alert('ล้างข้อมูลสถิติเรียบร้อยแล้ว');
+            }
+        }
+        
+        // บันทึกข้อมูลเป็นไฟล์ .txt
+        function saveHistoryToFile() {
+            const date = new Date();
+            const dateString = date.toLocaleDateString('th-TH') + ' ' + date.toLocaleTimeString('th-TH');
+            const fileContent = `
+สรุปสถิติการตรวจจับ Fraud Call Edge AI
+======================================
+วันที่บันทึก: ${dateString}
+
+- สถานะปลอดภัย: ${safetyHistory.safe} ครั้ง
+- สถานะไม่ปลอดภัย: ${safetyHistory.unsafe} ครั้ง
+            `;
+            const blob = new Blob([fileContent.trim()], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `safety-history-${Date.now()}.txt`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        // --- UI Update Functions ---
+        function updateUI(message, status) {
+    let safetyStatusText = '';
+    let bodyBgClass = 'bg-gray-100';
+    let dataCardBgClass = 'bg-blue-100';
+    let safetyStatusTextClass = 'text-blue-900';
+
+    if (status === 'เชื่อมต่อแล้ว') {
+        if (message === 'NORMAL') {
+            safetyStatusText = 'ปลอดภัย';
+            bodyBgClass = 'bg-green-200';
+            dataCardBgClass = 'bg-green-300';
+            safetyStatusTextClass = 'text-green-900';
+            safetyHistory.safe++;
+        } else if (message === 'SCAM') {
+            safetyStatusText = 'ไม่ปลอดภัย';
+            bodyBgClass = 'bg-red-200';
+            dataCardBgClass = 'bg-red-300';
+            safetyStatusTextClass = 'text-red-900';
+            safetyHistory.unsafe++;
+        } else if (message === 'NO VOICE') {
+            safetyStatusText = 'ไม่พบเสียง';
+            bodyBgClass = 'bg-yellow-200';
+            dataCardBgClass = 'bg-yellow-300';
+            safetyStatusTextClass = 'text-yellow-900';
+        } else {
+            safetyStatusText = 'ไม่พบเสียง';
+        }
+
+        saveHistory();
+        updateHistoryDisplay();
+    } else {
+        safetyStatusText = 'ไม่พบเสียง';
+    }
+
+    safetyStatusDisplay.textContent = safetyStatusText;
+    body.className = `${bodyBgClass} flex items-center justify-center min-h-screen`;
+    dataCard.className = `${dataCardBgClass} rounded-2xl p-8 mb-6 text-center transition-colors duration-500 ease-in-out`;
+    safetyStatusDisplay.className = `text-7xl font-bold ${safetyStatusTextClass} transition-colors duration-500`;
+    statusDisplay.textContent = `สถานะ: ${status}`;
+}
+
+        
+        // --- Bluetooth Functions ---
+        async function connectToDevice() {
+            try {
+                statusDisplay.textContent = 'สถานะ: กำลังสแกน...';
+                connectButton.disabled = true;
+
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'AudioSensor' }],
+                    optionalServices: [AUDIO_SERVICE_UUID]
+                });
+                
+                // เพิ่ม Event listener สำหรับการตัดการเชื่อมต่อ
+                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+                statusDisplay.textContent = 'สถานะ: กำลังเชื่อมต่อ...';
+                const server = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService(AUDIO_SERVICE_UUID);
+                audioCharacteristic = await service.getCharacteristic(AUDIO_CHAR_UUID);
+                await audioCharacteristic.startNotifications();
+                audioCharacteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+                
+                statusDisplay.textContent = 'สถานะ: เชื่อมต่อแล้ว';
+                connectButton.classList.add('hidden');
+                disconnectButton.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Error connecting to device:', error);
+                updateUI(0, 'การเชื่อมต่อล้มเหลว');
+                connectButton.disabled = false;
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อ Bluetooth โปรดตรวจสอบว่าเปิด Bluetooth แล้วและรองรับ Web Bluetooth API');
+            }
+        }
+
+        
+
+        function handleCharacteristicValueChanged(event) {
+    const value = event.target.value;
+    const decoder = new TextDecoder('utf-8');
+    const message = decoder.decode(value).trim();
+    updateUI(message, 'เชื่อมต่อแล้ว');
+}
+
+
+        function onDisconnected() {
+            statusDisplay.textContent = 'สถานะ: ตัดการเชื่อมต่อแล้ว';
+            updateUI(99, 'ตัดการเชื่อมต่อแล้ว'); 
+            connectButton.classList.remove('hidden');
+            disconnectButton.classList.add('hidden');
+            connectButton.disabled = false;
+            
+            // ลบ event listener เก่าออก
+            if (audioCharacteristic) {
+                audioCharacteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+                audioCharacteristic = null;
+            }
+            bluetoothDevice = null;
+        }
+
+        async function disconnectFromDevice() {
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                await bluetoothDevice.gatt.disconnect();
+                // ฟังก์ชัน onDisconnected จะถูกเรียกโดยอัตโนมัติ
+            }
+        }
+
+        // --- Event listeners for buttons ---
+        connectButton.addEventListener('click', connectToDevice);
+        disconnectButton.addEventListener('click', disconnectFromDevice);
+        clearButton.addEventListener('click', clearHistory);
+        saveButton.addEventListener('click', saveHistoryToFile);
+
+        // --- โหลดข้อมูลสถิติเมื่อเปิดหน้าเว็บ ---
+        document.addEventListener('DOMContentLoaded', loadHistory);
+
+    </script>
+</body>
+</html>
