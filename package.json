@@ -1,0 +1,27 @@
+{
+  "name": "fraud-call-edge-ai",
+  "version": "1.0.0",
+  "description": "Fraud Call Edge AI Hybrid App",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx http-server www -p 8080",
+    "build": "echo 'No build step required, using raw www folder'",
+    "copy": "npx cap copy",
+    "open:android": "npx cap open android"
+  },
+  "keywords": [
+    "capacitor",
+    "bluetooth",
+    "fraud-call",
+    "edge-ai"
+  ],
+  "author": "Trio-Ti_AMO",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^5.0.0",
+    "@capacitor/core": "^5.0.0"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
