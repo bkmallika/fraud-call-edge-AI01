@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fraud Call Edge AI App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      transition: background-color 1s ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+  <div id="app-container" class="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full">
+    <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">Fraud Call Edge AI</h1>
+    
+    <div id="status-display" class="text-center text-lg font-medium text-gray-600 mb-6">
+      สถานะ: ตัดการเชื่อมต่อแล้ว
+    </div>
+
+    <div id="data-card" class="bg-blue-100 rounded-2xl p-8 mb-6 text-center">
+      <p class="text-2xl text-blue-800 mb-2">สถานะความปลอดภัย</p>
+      <p id="safety-status" class="text-7xl font-bold text-blue-900">ไม่พบเสียง</p>
+    </div>
+    
+    <div id="history-card" class="bg-gray-200 rounded-2xl p-4 mb-6">
+      <h2 class="text-xl font-bold text-gray-700 text-center mb-2">สถิติการตรวจจับ</h2>
+      <div class="flex justify-around text-center">
+        <div>
+          <p class="text-lg text-green-700">ปลอดภัย</p>
+          <p id="history-safe" class="text-3xl font-bold text-green-800">0</p>
+        </div>
+        <div>
+          <p class="text-lg text-red-700">ไม่ปลอดภัย</p>
+          <p id="history-unsafe" class="text-3xl font-bold text-red-800">0</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-4">
+      <button id="connect-button" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-xl">
+        เชื่อมต่อ Bluetooth
+      </button>
+      <button id="disconnect-button" class="bg-red-500 text-white font-bold py-3 px-6 rounded-xl hidden">
+        ตัดการเชื่อมต่อ
+      </button>
+      <div class="flex gap-4">
+        <button id="clear-button" class="w-full bg-yellow-500 text-white font-bold py-3 px-6 rounded-xl">
+          ล้างข้อมูล
+        </button>
+        <button id="save-button" class="w-full bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl">
+          บันทึกข้อมูล
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- UI elements ---
+    const statusDisplay = document.getElementById('status-display');
+    const safetyStatusDisplay = document.getElementById('safety-status');
+    const dataCard = document.getElementById('data-card');
+    const connectButton = document.getElementById('connect-button');
+    const disconnectButton = document.getElementById('disconnect-button');
+    const historySafeDisplay = document.getElementById('history-safe');
+    const historyUnsafeDisplay = document.getElementById('history-unsafe');
+    const clearButton = document.getElementById('clear-button');
+    const saveButton = document.getElementById('save-button');
+    const body = document.body;
+
+    // --- Bluetooth variables ---
+    let bluetoothDevice = null;
+    let audioCharacteristic = null;
+
+    // --- Bluetooth UUIDs ---
+    const AUDIO_SERVICE_UUID = '19B10000-E8F2-537E-4F6C-D104768A1214';
+    const AUDIO_CHAR_UUID    = '19B10001-E8F2-537E-4F6C-D104768A1214';
+
+    // --- History ---
+    let safetyHistory = { safe: 0, unsafe: 0 };
+
+    function loadHistory() {
+      const storedHistory = localStorage.getItem('safetyHistory');
+      if (storedHistory) safetyHistory = JSON.parse(storedHistory);
+      updateHistoryDisplay();
+    }
+    function updateHistoryDisplay() {
+      historySafeDisplay.textContent = safetyHistory.safe;
+      historyUnsafeDisplay.textContent = safetyHistory.unsafe;
+    }
+    function saveHistory() {
+      localStorage.setItem('safetyHistory', JSON.stringify(safetyHistory));
+    }
+    function clearHistory() {
+      if (confirm('ล้างข้อมูลทั้งหมด?')) {
+        safetyHistory = { safe: 0, unsafe: 0 };
+        saveHistory();
+        updateHistoryDisplay();
+      }
+    }
+    function saveHistoryToFile() {
+      const date = new Date().toLocaleString("th-TH");
+      const text = `สถิติ Fraud Call Edge AI\n\nปลอดภัย: ${safetyHistory.safe}\nไม่ปลอดภัย: ${safetyHistory.unsafe}\nบันทึกเมื่อ: ${date}`;
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `safety-history-${Date.now()}.txt`;
+      link.click();
+    }
+
+    // --- UI update ---
+    function updateUI(message, status) {
+      let text = 'ไม่พบเสียง';
+      let bodyBg = 'bg-gray-100';
+      let cardBg = 'bg-blue-100';
+      let textClass = 'text-blue-900';
+
+      if (status === 'เชื่อมต่อแล้ว') {
+        if (message === 'NORMAL') {
+          text = 'ปลอดภัย';
+          bodyBg = 'bg-green-200';
+          cardBg = 'bg-green-300';
+          textClass = 'text-green-900';
+          safetyHistory.safe++;
+        } else if (message === 'SCAM') {
+          text = 'ไม่ปลอดภัย';
+          bodyBg = 'bg-red-200';
+          cardBg = 'bg-red-300';
+          textClass = 'text-red-900';
+          safetyHistory.unsafe++;
+        } else if (message === 'NO VOICE') {
+          text = 'ไม่พบเสียง';
+          bodyBg = 'bg-yellow-200';
+          cardBg = 'bg-yellow-300';
+          textClass = 'text-yellow-900';
+        }
+        saveHistory();
+        updateHistoryDisplay();
+      }
+
+      safetyStatusDisplay.textContent = text;
+      statusDisplay.textContent = `สถานะ: ${status}`;
+      body.className = `${bodyBg} flex items-center justify-center min-h-screen`;
+      dataCard.className = `${cardBg} rounded-2xl p-8 mb-6 text-center`;
+      safetyStatusDisplay.className = `text-7xl font-bold ${textClass}`;
+    }
+
+    // --- Bluetooth connect ---
+    async function connectToDevice() {
+      try {
+        statusDisplay.textContent = 'สถานะ: กำลังสแกน...';
+        connectButton.disabled = true;
+
+        bluetoothDevice = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [AUDIO_SERVICE_UUID]
+        });
+
+        console.log("เจออุปกรณ์:", bluetoothDevice.name);
+
+        bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+        statusDisplay.textContent = 'สถานะ: กำลังเชื่อมต่อ...';
+        const server = await bluetoothDevice.gatt.connect();
+        const service = await server.getPrimaryService(AUDIO_SERVICE_UUID);
+        audioCharacteristic = await service.getCharacteristic(AUDIO_CHAR_UUID);
+        await audioCharacteristic.startNotifications();
+        audioCharacteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+
+        statusDisplay.textContent = 'สถานะ: เชื่อมต่อแล้ว';
+        connectButton.classList.add('hidden');
+        disconnectButton.classList.remove('hidden');
+
+      } catch (error) {
+        console.error('Error connecting:', error);
+        alert('เชื่อมต่อไม่ได้: ' + error);
+        updateUI(null, 'การเชื่อมต่อล้มเหลว');
+        connectButton.disabled = false;
+      }
+    }
+
+    function handleCharacteristicValueChanged(event) {
+      const value = event.target.value;
+      const msg = new TextDecoder().decode(value).trim();
+      console.log("ค่าที่ได้จากอุปกรณ์:", msg);
+      updateUI(msg, 'เชื่อมต่อแล้ว');
+    }
+
+    function onDisconnected() {
+      updateUI(null, 'ตัดการเชื่อมต่อแล้ว');
+      connectButton.classList.remove('hidden');
+      disconnectButton.classList.add('hidden');
+      connectButton.disabled = false;
+      if (audioCharacteristic) {
+        audioCharacteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
+        audioCharacteristic = null;
+      }
+      bluetoothDevice = null;
+    }
+
+    async function disconnectFromDevice() {
+      if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+        await bluetoothDevice.gatt.disconnect();
+      }
+    }
+
+    // --- Event listeners ---
+    connectButton.addEventListener('click', connectToDevice);
+    disconnectButton.addEventListener('click', disconnectFromDevice);
+    clearButton.addEventListener('click', clearHistory);
+    saveButton.addEventListener('click', saveHistoryToFile);
+    document.addEventListener('DOMContentLoaded', loadHistory);
+  </script>
+</body>
+</html>
